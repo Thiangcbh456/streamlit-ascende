@@ -1,0 +1,26 @@
+# 🔒 Credenciais e configurações privadas
+*.json
+*.key
+*.pem
+
+# 🔥 Ambiente virtual
+venv/
+env/
+ascende_env/
+.venv/
+
+# 🧠 Cache e metadados
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.ipynb_checkpoints/
+
+# 📂 Arquivos temporários
+*.tmp
+*.log
+*.parquet
+
+# ⚙️ Configurações locais ou sensíveis
+.env
+secrets/
