@@ -113,7 +113,10 @@ def carregar_parquet(origem, sample=None) -> pd.DataFrame:
             con = duckdb.connect()
             df = con.execute(f"SELECT * FROM read_parquet('{path}')").fetchdf()
             con.close()
-        os.remove(path)
+            try:
+                os.remove(path)
+            except PermissionError:
+                pass
         if sample:
             df = df.head(sample)
         return df
@@ -136,11 +139,12 @@ DATASETS = {
     "RAIS 2023":"https://drive.google.com/file/d/13lEIFqkdtZ6FPZ4be8qcQnCww1H58IgV/view"
 }
 
+
 # ===========================================================
 # 4️⃣ Inicializar e Criar Filtros
 # ===========================================================
-cred = r"C:\Users\thiag\Documents\ASCENDE-DASHBOARD\ascende-firebase.json"
-df_vagas = carregar_dados_firebase(cred)
+cred_path_firebase = r"C:\Users\thiag\Documents\ASCENDE-DASHBOARD\ascende-firebase.json"
+df_vagas = carregar_dados_firebase(cred_path_firebase)
 if df_vagas.empty:
     st.warning("Nenhuma vaga encontrada.")
     st.stop()
@@ -154,7 +158,6 @@ habs = sorted(
     h for h in df_vagas.get("Habilidades", pd.Series([], dtype=str))
       .dropna().astype(str).str.split(",").explode().str.strip().unique() if h
 )
-horarios = sorted(df_vagas.get("Horario", pd.Series([], dtype=str)).dropna().unique().tolist())
 
 svals = df_vagas["Salario_num"].dropna()
 sal_min, sal_max = (0, int(svals.max()) if not svals.empty else 10000)
@@ -163,25 +166,112 @@ faixa = st.sidebar.slider("Faixa Salarial (R$)", sal_min, sal_max, (sal_min, sal
 tipo_sel = st.sidebar.multiselect("Tipo de Vaga", tipos)
 cidade_sel = st.sidebar.multiselect("Localização", cidades)
 hab_sel = st.sidebar.multiselect("Habilidades", habs)
-hor_sel = st.sidebar.multiselect("Horário", horarios)  # 🕒 Novo filtro
+
+
+# ===========================================================
+# 🕒 Filtro de Horário — completamente flexível
+# ===========================================================
+st.sidebar.markdown("🕒 **Horário personalizado**")
+
+col_h1, col_h2 = st.sidebar.columns(2)
+with col_h1:
+    hora_inicio = st.time_input("Começa às", value=pd.Timestamp("08:00").time())
+with col_h2:
+    hora_fim = st.time_input("Termina às", value=pd.Timestamp("18:00").time())
+
+st.sidebar.markdown(
+    """
+    <div style='background-color:#f9f9f9; border:1px solid #ddd; border-radius:6px;
+                padding:8px 10px; margin-top:6px; margin-bottom:4px;'>
+        <small style='color:#555;'>⚙️ Ajustes adicionais de horário</small>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+ativar_filtro_indefinido = st.sidebar.toggle(
+    "Ativar remoção de horários específicos", value=False
+)
+
+def obter_opcoes_horario(df: pd.DataFrame) -> list[str]:
+    if "Horario" not in df.columns:
+        return []
+    horarios = (
+        df["Horario"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .replace("", pd.NA)
+        .dropna()
+        .unique()
+        .tolist()
+    )
+    return sorted(set(horarios))
+
+horarios_indesejados = []
+if ativar_filtro_indefinido:
+    opcoes_horarios = obter_opcoes_horario(df_vagas)
+    if not opcoes_horarios:
+        st.sidebar.info("Nenhuma descrição de horário encontrada no Firebase.")
+        opcoes_horarios = []
+    horarios_indesejados = st.sidebar.multiselect(
+        "Selecione os horários que deseja ocultar (exceções):",
+        options=opcoes_horarios,
+        help="Essas opções são carregadas automaticamente a partir da coluna 'Horario' do Firebase."
+    )
+
+
+# ===========================================================
+# Função de filtragem geral
+# ===========================================================
+def extrair_hora(texto):
+    if not isinstance(texto, str):
+        return None
+    match = re.search(r'(\d{1,2})[:hH](\d{2})', texto)
+    if match:
+        h, m = int(match.group(1)), int(match.group(2))
+        if 0 <= h < 24 and 0 <= m < 60:
+            return pd.Timestamp(f"{h:02d}:{m:02d}").time()
+    return None
+
 
 def aplicar_filtros(df):
     df_f = df.copy()
     mn, mx = faixa
     df_f = df_f[df_f["Salario_num"].fillna(0).between(mn, mx)]
+
     if tipo_sel:
         df_f = df_f[df_f["Tipo de Vaga"].isin(tipo_sel)]
     if cidade_sel:
         df_f = df_f[df_f["Localizacao"].isin(cidade_sel)]
     if hab_sel:
         mask = df_f["Habilidades"].fillna("").apply(
-            lambda v: any(h.lower() in str(v).lower() for h in hab_sel))
+            lambda v: any(h.lower() in str(v).lower() for h in hab_sel)
+        )
         df_f = df_f[mask]
-    if hor_sel:
-        df_f = df_f[df_f["Horario"].isin(hor_sel)]  # ⏰ filtro horário inserido
+
+    if "Horario" in df_f.columns and not df_f["Horario"].isna().all():
+        df_f["hora_extraida"] = df_f["Horario"].apply(extrair_hora)
+        if hora_inicio and hora_fim:
+            df_f = df_f[
+                df_f["hora_extraida"].isna() |
+                df_f["hora_extraida"].apply(
+                    lambda t: isinstance(t, type(hora_inicio)) and hora_inicio <= t <= hora_fim
+                )
+            ]
+        if ativar_filtro_indefinido and horarios_indesejados:
+            termos = [t.lower() for t in horarios_indesejados]
+            padrao = "|".join(map(re.escape, termos))
+            df_f = df_f[
+                ~df_f["Horario"].astype(str).str.lower().str.contains(padrao, regex=True, na=False)
+            ]
+
+    df_f = df_f.drop(columns=["hora_extraida"], errors="ignore")
     return df_f
 
+
 df_filt = aplicar_filtros(df_vagas)
+
 
 # ===========================================================
 # 5️⃣ Sidebar – Navegação
@@ -192,13 +282,14 @@ menu = st.sidebar.radio(
     ["🏠 Home", "💼 Vagas", "🧾 CAGED", "📊 RAIS", "📈 Análises Avançadas"]
 )
 
-st.title("ASCENDE — Dashboard de Vagas de TI")
+st.title("ASCENDE — Dashboard de Oportunidades em TI")
+
 
 # ===========================================================
 # 🏠 HOME
 # ===========================================================
 if menu == "🏠 Home":
-    st.header("🏠 Visão Geral das Vagas")
+    st.header("🏠 Visão Geral das Oportunidades")
     total, filtradas = len(df_vagas), len(df_filt)
     sal_med = df_filt["Salario_num"].dropna().mean()
     col1, col2, col3 = st.columns(3)
@@ -216,12 +307,42 @@ if menu == "🏠 Home":
         st.plotly_chart(fig, use_container_width=True)
 
     if "Empresa" in df_filt:
-        top_emp = df_filt["Empresa"].dropna().replace("", "Não Informada").value_counts().head(10).reset_index()
+        st.subheader("🏢 Empresas que Mais Contratam")
+        top_emp = (
+            df_filt["Empresa"]
+            .dropna()
+            .replace("", pd.NA)
+            .replace("Não Informada", pd.NA)
+            .dropna()
+            .value_counts()
+            .head(10)
+            .reset_index()
+        )
         top_emp.columns = ["Empresa", "Total Vagas"]
-        st.subheader("🏢 Top 10 Empresas")
-        st.plotly_chart(px.bar(top_emp, x="Empresa", y="Total Vagas",
-                               color="Total Vagas", color_continuous_scale="Blues"),
-                        use_container_width=True)
+
+        if not top_emp.empty:
+            top_emp = top_emp.sort_values(by="Total Vagas", ascending=True)
+            fig_emp = px.bar(
+                top_emp, x="Total Vagas", y="Empresa",
+                orientation="h", color="Total Vagas",
+                color_continuous_scale=px.colors.sequential.Tealgrn,
+                text="Total Vagas"
+            )
+            fig_emp.update_layout(
+                height=480, margin=dict(l=120, r=40, t=40, b=40),
+                plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)",
+                xaxis_title="Número de Vagas", yaxis_title="",
+                coloraxis_showscale=False
+            )
+            fig_emp.update_traces(
+                texttemplate="%{text}",
+                textposition="outside",
+                marker_line_color="teal",
+                marker_line_width=1
+            )
+            st.plotly_chart(fig_emp, use_container_width=True)
+        else:
+            st.info("Nenhuma empresa informada disponível para exibir.")
 
     if "Habilidades" in df_filt:
         todas = df_filt["Habilidades"].dropna().astype(str).str.split(",").explode().str.strip().str.title()
@@ -241,7 +362,7 @@ if menu == "🏠 Home":
             ax.imshow(wc, interpolation="bilinear"); ax.axis("off")
             st.pyplot(fig, use_container_width=True)
 
-            st.subheader("🏅 Top 10 Habilidades Mais Frequentes")
+            st.subheader("🏅 Principais Habilidades Demandadas")
             top10 = freq_filtrado.head(10).sort_values(ascending=True).reset_index()
             top10.columns = ["Habilidade", "Frequência"]
             fig2 = px.bar(top10, x="Frequência", y="Habilidade",
@@ -255,8 +376,9 @@ if menu == "🏠 Home":
                            .mean().dropna().sort_values(ascending=False).reset_index()
         st.subheader("💰 Salário Médio por UF")
         st.plotly_chart(px.bar(medias_uf, x="Estado_UF", y="Salario_num",
-                               color="Salario_num", color_continuous_scale="YlGnBu"),
+                               color="Salario_num", color_discrete_sequence=["#2b83ba"]),
                         use_container_width=True)
+
 
 # ===========================================================
 # 💼 VAGAS
@@ -276,13 +398,18 @@ elif menu == "💼 Vagas":
             titulo = str(r.get("Titulo da Vaga") or "").strip() or "Não Informado"
             st.subheader(titulo)
             st.write(f"**Empresa:** {r.get('Empresa','-')}  **Local:** {r.get('Localizacao','-')}")
-            st.write(f"**Tipo:** {r.get('Tipo de Vaga','-')}  **Salário:** {r.get('Salario','-')}")
+
+            # 💡 Corrigido: separar Tipo e Salário em linhas diferentes
+            st.write(f"**Tipo:** {r.get('Tipo de Vaga','-')}")
+            st.write(f"**Salário:** {r.get('Salario','-')}")
+
             st.write(f"**Horário:** {r.get('Horario','-')}")
             st.write(f"**Habilidades:** {r.get('Habilidades','-')}")
             st.divider()
 
+
 # ===========================================================
-# 🧾 CAGED / 📊 RAIS / 📈 Análises
+# OUTRAS ABAS
 # ===========================================================
 elif menu == "🧾 CAGED":
     st.header("🧾 CAGED (Parquet)")
@@ -307,14 +434,15 @@ elif menu == "📈 Análises Avançadas":
     if "Estado_UF" in df_filt:
         med = df_filt.groupby("Estado_UF")["Salario_num"].mean().dropna().sort_values(ascending=False).reset_index()
         st.plotly_chart(px.bar(med, x="Estado_UF", y="Salario_num",
-                               color="Salario_num", color_continuous_scale="Peach"),
+                               color="Salario_num", color_discrete_sequence=["#e37222"]),
                         use_container_width=True)
     if "Empresa" in df_filt:
         top_emp = df_filt["Empresa"].dropna().replace("", "Não Informada").value_counts().head(10).reset_index()
         top_emp.columns = ["Empresa", "Total Vagas"]
         st.plotly_chart(px.bar(top_emp, x="Empresa", y="Total Vagas",
-                               color="Total Vagas", color_continuous_scale="Blues"),
+                               color="Total Vagas", color_discrete_sequence=["#76b7b2"]),
                         use_container_width=True)
+
 
 # ===========================================================
 # Rodapé
@@ -322,9 +450,9 @@ elif menu == "📈 Análises Avançadas":
 st.markdown(f"""
 ---
 💡 **Notas**
-- Novo filtro por **Horário** integrado à barra lateral.  
-- Nuvem e gráfico de habilidades permitem remover termos manualmente.  
-- Paginação de vagas: 10 vagas por página.  
-- Gráficos coloridos e dinâmicos no painel 🏠 Home.  
-- PyArrow ativo? → **{USE_PYARROW}**
+- Filtro de *Horário* agora lista todas as descrições vindas da própria coluna 'Horario' no Firebase e permite escolher livremente quais ocultar.  
+- “🏢 Empresas que Mais Contratam” reestilizado e ignora “Não Informada”.  
+- Nuvem e gráfico de habilidades permitem remover termos manualmente.  
+- Paginação de vagas = 10 por página.  
+- PyArrow ativo? → **{USE_PYARROW}**
 """)
