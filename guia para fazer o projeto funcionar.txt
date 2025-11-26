@@ -1,0 +1,34 @@
+guia para fazer o projeto funcionar: 
+
+python --version
+
+pip --version
+
+git --version
+
+dentro da pasta onde ficará o projeto:
+
+python -venv ascende_env
+
+ascende_env\Scripts\activate
+
+pip install streamlit pandas pyarrow duckdb plotly matplolib wordcloud firebase-admin requests numpy
+
+Obs: caso pyarrow não rode, duckdb já faz o serviço.
+
+
+no código entre as linhas 180 até 184 vai aparecer isso :
+
+# ===========================================================
+# 4️⃣ Inicializar e Criar Filtros
+# ===========================================================
+# Substitua o caminho abaixo pelo seu caminho local real
+cred_path_firebase = r"C:\Users\thiag\Documents\ASCENDE-DASHBOARD\ascende-firebase.json" 
+df_vagas = carregar_dados_firebase(cred_path_firebase)
+if df_vagas.empty:
+    st.warning("Nenhuma vaga encontrada.")
+    st.stop()
+
+tem que substituir pelo código chave do firebase, que será fornecido pelo o proprietário do código, para que o streamlit possa puxar todos os dados do firebase
+
+e tem que substituir também o caminho em que o arquivo.json ficará armazenado.
