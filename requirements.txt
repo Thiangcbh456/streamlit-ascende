@@ -1,0 +1,11 @@
+streamlit
+pandas
+numpy
+plotly
+firebase_admin
+pyarrow
+duckdb
+requests
+wordcloud
+matplotlib
+python-dateutil

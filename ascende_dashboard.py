@@ -1345,12 +1345,4 @@ elif menu == "📊 RAIS":
 # ===========================================================
 # Rodapé
 # ===========================================================
-st.markdown(f"""
----
-💡 **Notas**
-- Campo “Tipo De Vaga” normalizado automaticamente (aceita *tipo_vaga*, *Tipo de vaga*, etc.)  
-- Filtros dinâmicos de *Horário* e *Salário* mantidos  
-- Faixa salarial fixa: 0 – 12 000  
-- Paginação de vagas = 10 por página  
-- PyArrow ativo? → **{USE_PYARROW}**
-""")
+st.markdown
