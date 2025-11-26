@@ -637,7 +637,7 @@ elif menu == "💼 Vagas":
 # ===========================================================
 
 elif menu == "🧾 CAGED":
-    st.subheader("🧠 Ocupações de TI — Análise Dinâmica")
+    st.subheader("🧠 Gráficos Dinâmicos na Área da TI")
 
     ARQUIVOS_TI = [DATASETS[k] for k in DATASETS if "CAGED" in k]
     CBO_LINK = DICTS["CBO 2002"]
@@ -1342,7 +1342,3 @@ elif menu == "📊 RAIS":
             st.warning("Não foi possível carregar o conjunto de dados RAIS.")
 
 
-# ===========================================================
-# Rodapé
-# ===========================================================
-st.markdown
