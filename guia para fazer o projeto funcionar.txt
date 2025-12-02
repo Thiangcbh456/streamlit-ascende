@@ -1,34 +1,100 @@
-guia para fazer o projeto funcionar: 
+GUIA OFICIAL DE INSTALAÇÃO – ASCENDE DASHBOARD
+(versão atualizada e organizada)
+
+Verificar versões instaladas
+Execute os comandos abaixo para verificar se tudo está instalado corretamente:
 
 python --version
-
 pip --version
-
 git --version
 
-dentro da pasta onde ficará o projeto:
 
-python -venv ascende_env
+
+
+Requisitos: Python 3.11 ou 3.12 (não usar Python 3.13+).
+
+Criar e ativar o ambiente virtual
+Dentro da pasta onde o projeto ficará salvo, execute:
+
+py -3.12 -m venv ascende_env
+
+Ative o ambiente:
 
 ascende_env\Scripts\activate
 
-pip install streamlit pandas pyarrow duckdb plotly matplolib wordcloud firebase-admin requests numpy
-
-Obs: caso pyarrow não rode, duckdb já faz o serviço.
 
 
-no código entre as linhas 180 até 184 vai aparecer isso :
 
-# ===========================================================
-# 4️⃣ Inicializar e Criar Filtros
-# ===========================================================
-# Substitua o caminho abaixo pelo seu caminho local real
-cred_path_firebase = r"C:\Users\thiag\Documents\ASCENDE-DASHBOARD\ascende-firebase.json" 
+
+
+Atualizar o pip
+
+python -m pip install --upgrade pip
+
+Instalar dependências essenciais
+
+pip install streamlit pandas duckdb plotly matplotlib wordcloud firebase-admin requests numpy
+
+Observação:
+
+PyArrow é opcional.
+
+Caso pyarrow não funcione, ignore. O DuckDB já faz o trabalho de leitura de arquivos Parquet/Arrow.
+
+Se desejar tentar instalar:
+
+pip install pyarrow
+
+
+
+
+
+
+
+Configurar o Firebase
+
+No código (entre as linhas 180 e 184), existe:
+
+cred_path_firebase = r"C:\Users\thiag\Documents\ASCENDE-DASHBOARD\ascende-firebase.json"
 df_vagas = carregar_dados_firebase(cred_path_firebase)
 if df_vagas.empty:
-    st.warning("Nenhuma vaga encontrada.")
-    st.stop()
+st.warning("Nenhuma vaga encontrada.")
+st.stop()
 
-tem que substituir pelo código chave do firebase, que será fornecido pelo o proprietário do código, para que o streamlit possa puxar todos os dados do firebase
+O usuário deve substituir duas coisas:
 
-e tem que substituir também o caminho em que o arquivo.json ficará armazenado.
+O caminho do arquivo .json do Firebase (cred_path_firebase).
+Exemplo:
+cred_path_firebase = r"C:\Users\SEU_USUARIO\Documents\ASCENDE-DASHBOARD\ascende-firebase.json"
+
+O arquivo JSON do Firebase, que deve ser fornecido pelo proprietário do projeto.
+
+Sem esse arquivo, o Streamlit não conseguirá acessar o banco de dados.
+
+
+
+
+
+
+
+
+Executar o projeto
+
+streamlit run ascende_dashboard_template.py
+
+O navegador abrirá automaticamente o dashboard.
+
+
+
+
+
+
+
+
+RESUMO RÁPIDO PARA CONSULTA
+
+Criar ambiente: py -3.12 -m venv ascende_env
+Ativar ambiente: ascende_env\Scripts\activate
+Atualizar pip: python -m pip install --upgrade pip
+Instalar libs: pip install streamlit pandas duckdb plotly matplotlib wordcloud firebase-admin requests numpy
+Rodar projeto: streamlit run ascende_dashboard_template.py
